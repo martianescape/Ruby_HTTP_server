@@ -22,10 +22,11 @@ def handle_http_request(client_conn)
   request = {}
   request["socket"] = client_conn
 
-  p "client_conn = #{client_conn.local_address.ip_unpack}"
+  p "i client_conn = #{client_conn.local_address.ip_unpack}"
   p "client_conn.remote = #{client_conn.remote_address.ip_unpack}"
+  client_conn.puts "don't worry dude connected"
   header_str, body_str = get_http_header(request)
-#  p "header_str, = #{header_str}"
+  p "header_str, = #{header_str}"
  # p "body_str, = #{body_str}"
   if !header_str
     return
@@ -36,34 +37,55 @@ def handle_http_request(client_conn)
   request.each do |r|
     p r
   end
+  
+  if request["header"].has_key?("Content-Length")
+    p "found content length"
+    content_length = request["header"]["Content-Length"].to_i
+    p "content_length = #{content_length}"
+    request["body"] = get_http_body(request, body_str, content_length)
+  end
+  #if !request.empty?
+    request_handler(request)
+  #else
+   # client_conn.close
+  #end
+  p "request body = #{request["body"]}"
 end
 
 
 def get_http_header(request, data = '')
-  if /\n\n/ =~ data
+  if /\r\n\r\n/ =~ data
     header_str, body_str = data.split(/\n\n/) 
     return header_str, body_str
   end
   buff = request["socket"].recv(2400)
-  if !buff
-    return '',''
-  end
+  if !buff; return '',''; end
+  p "data = #{data}"
+  p "buff = #{buff}"
   get_http_header(request, data+buff)
+end
+
+def get_http_body(request, body_str, content_length)
+  if body_str.length == content_length; return body_str; end
+  buff = request["socket"].recv(2048)
+  if !buff; return ''; end
+  get_http_body(request, body_str + buff, content_length)
 end
 
 
 def header_parser(header_str)
-  
-  headers_list = header_str.split("\n")
+  headers_list = header_str.split("\r\n")
   header_request = {}
   header_request["method"], header_request["path"], header_request["protocol"] = headers_list.shift.split(' ')
-  #p "header_list is #{headers_list}"  
-
-  headers_list.each do
-    |header|
+  headers_list.each do |header|
     key, value = header.split(': ',2)
     header_request[key] = value
   end
+  header_request['Cookie'] = cookie_parser(header_request)
+  return header_request
+end
+
+def cookie_parser(header_request)
   if header_request.has_key?("Cookie")
     cookies = header_request["Cookie"].split(";")
     client_cookies = {}
@@ -71,15 +93,21 @@ def header_parser(header_str)
       head, body = cookie.split("=",2)
       client_cookies[head] = body
     end
-    header_request['Cookie'] = client_cookies
-  else
-    header_request['Cookie'] = ""
+    return client_cookies
   end
-    
-  #p "complete check #{header_request['Cookie']}"
-  return header_request
+  return ""
 end
 
 
+
+def request_handler(request)
+  response = {}
+  session_handler
+  method_handler
+end
+
+def session_handler
+  
+end
 
 start_server('0.0.0.0', 8080)
